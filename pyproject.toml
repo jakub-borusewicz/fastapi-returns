@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "fastapi-returns"
+version = "0.1.2"
+description = ""
+authors = ["Jakub Borusewicz <jakub.borusewicz@gmail.com>"]
+license = "MIT"
+homepage = "https://github.com/jakub-borusewicz/fastapi-returns"
+repository = "https://github.com/jakub-borusewicz/fastapi-returns"
+exclude = ["fastapi_returns/tests/*"]
+packages = [
+    { include = "fastapi_returns"},
+]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+fastapi = "^0.70.0"
+returns = "^0.17.0"
+requests = "^2.26.0"
+
+[tool.poetry.dev-dependencies]
+mypy = "^0.910"
+pytest = "^6.2.5"
+pre-commit = "^2.15.0"
+tox = "^3.24.4"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
