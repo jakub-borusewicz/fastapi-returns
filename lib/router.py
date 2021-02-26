@@ -1,40 +1,36 @@
 from __future__ import annotations
 
+from fastapi.datastructures import DefaultPlaceholder, Default
+from fastapi.openapi.models import Response
 from functools import wraps
+from starlette.responses import JSONResponse
+from starlette.routing import BaseRoute
+from types import GenericAlias
+from typing import Any, Callable, Dict, get_origin, get_type_hints, Optional, Type, List, Sequence, Union, Set
 
+from fastapi import APIRouter, HTTPException, params
+from fastapi.encoders import jsonable_encoder, SetIntStr, DictIntStrAny
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
 from returns.pipeline import is_successful
-from returns.result import Result, Success
-from typing import Callable, Any, get_type_hints, Sequence
+from returns.result import Result
 
-from fastapi import APIRouter, HTTPException
 
+class ErrorDetails(BaseModel):
+    message: str
 
 
 class ApiError(Exception):
     status_code: int
-    details: str
-    # def __hash__(self):
+    details: ErrorDetails
 
 
 class ErrorHandlingRoute(APIRoute):
     ...
 
 
-def unpack_container(endpoint_func) -> Callable:
-    @wraps(endpoint_func)
-    def decorator(*args, **kwargs):
-        result: Result = endpoint_func(*args, **kwargs)
-
-        if is_successful(result):
-            return result.unwrap()
-        else:
-            exception: ApiError = result.failure()
-
-            raise HTTPException(status_code=exception.status_code, detail=exception.details)
-
-    return decorator
+EndpointResultType = Result[BaseModel, ApiError]
+EndpointType = Callable[..., EndpointResultType]
 
 
 class ErrorHandlingRouter(APIRouter):
@@ -42,32 +38,41 @@ class ErrorHandlingRouter(APIRouter):
     Overrides the route decorator logic to use the annotated return type as the `response_model` if unspecified.
     """
 
-    # if not TYPE_CHECKING:  # pragma: no branch
+    def add_api_route(
+            self,
+            path: str,
+            endpoint: Callable[..., Any],
+            **kwargs,
+    ) -> None:
+        return_type = get_type_hints(endpoint)["return"]
+        assert get_origin(return_type) is Result, "Endpoint return type must be returns.Result"
+        success_result: BaseModel
+        success_result, failure_result = return_type.__args__
 
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self._errors_mapping = {}
+        response_model = success_result
 
-    def add_api_route(self, path: str, endpoint: Callable[..., Any], **kwargs: Any) -> None:
-        if kwargs.get("response_model") is None:
-            result_type = get_type_hints(endpoint).get("return")
-            # assert result_type in (Result.success_type, Result.failure_type)
+        responses = {}
+        for exception in failure_result.__args__:
+            responses[exception.status_code] = {"model": type(exception.details)}
 
-            success_result: Result
-            success_result, failure_result = result_type.__args__
+        endpoint = self._unpacked_container(endpoint)
+        route_class_override = ErrorHandlingRoute
+        return super().add_api_route(
+            path,
+            endpoint, response_model=response_model, responses=responses, **kwargs
+        )
 
-            resulta: ApiError
-            resultb: ApiError
+    @staticmethod
+    def _unpacked_container(endpoint_func: EndpointType) -> Callable[..., BaseModel]:
+        @wraps(endpoint_func)
+        def decorator(*args: Any, **kwargs: Any) -> BaseModel:
+            result = endpoint_func(*args, **kwargs)
 
-            resulta, resultb = failure_result.__args__
+            if is_successful(result):
+                return result.unwrap()
+            else:
+                exception: ApiError = result.failure()
 
-            kwargs["response_model"] = success_result
-            kwargs["responses"] = {
-                # resulta.status_code: {"model": ErrorDetails},
-                # resultb.status_code: {"model": ErrorDetails},
-                resulta.status_code: {"model": type(resulta.details)},
-                resultb.status_code: {"model": type(resultb.details)},
-            }
+                raise HTTPException(status_code=exception.status_code, detail=jsonable_encoder(exception.details))
 
-            endpoint = unpack_container(endpoint)
-        return super().add_api_route(path, endpoint, route_class_override=ErrorHandlingRoute, **kwargs)
+        return decorator

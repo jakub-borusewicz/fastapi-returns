@@ -59,7 +59,7 @@ repos:
           'types': [python]
           # `-p homies` as workaround for "Source file found twice under different module names error"
           # further reading: https://github.com/python/mypy/issues/8944
-          args: ["-p", "homies", --config-file=mypy.ini]
+          args: ["-p", "lib", --config-file=mypy.ini]
           require_serial: true
           # Additional dependencies should list all libs that are typed;
           # otherwise should be added to ignored in mypy.ini like so:
