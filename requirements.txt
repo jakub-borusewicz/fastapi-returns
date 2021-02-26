@@ -1,0 +1,6 @@
+fastapi
+returns
+mypy
+pre-commit
+pytest
+lambdas
